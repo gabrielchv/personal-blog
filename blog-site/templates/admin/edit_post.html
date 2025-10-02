@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}{% if post %}Edit Post: {{ post.title }}{% else %}Create New Post{% endif %}{% endblock %}
+
+{% block content %}
+<!-- Add Sortable.js for drag & drop -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+<div class="min-h-screen bg-gray-50 py-8">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="bg-white shadow rounded-lg p-6">
+            <div class="mb-6">
+                <h1 class="text-2xl font-bold text-gray-900">{% if post %}Edit Post{% else %}Create New Post{% endif %}</h1>
+                <p class="mt-1 text-sm text-gray-600">Fill out the form below and upload media for your post</p>
+            </div>
+
+            <form id="post-form" method="POST" action="{% if post %}/admin/posts/edit/{{ post.id }}{% else %}/admin/posts/new{% endif %}" enctype="multipart/form-data">
+                <!-- Title -->
+                <div class="mb-6">
+                    <label for="title" class="block text-sm font-medium text-gray-700 mb-2">Title *</label>
+                    <input 
+                        type="text" 
+                        id="title" 
+                        name="title" 
+                        value="{{ post.title if post else '' }}" 
+                        required
+                        class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                </div>
+
+                <!-- Date -->
+                <div class="mb-6">
+                    <label for="date" class="block text-sm font-medium text-gray-700 mb-2">Date (DD/MM/YYYY) *</label>
+                    <input 
+                        type="text" 
+                        id="date" 
+                        name="date" 
+                        value="{{ post.date if post else now.strftime('%d/%m/%Y') }}" 
+                        required
+                        placeholder="24/06/2025"
+                        class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                </div>
+
+                <!-- Description -->
+                <div class="mb-6">
+                    <label for="description" class="block text-sm font-medium text-gray-700 mb-2">Description *</label>
+                    <textarea 
+                        id="description" 
+                        name="description" 
+                        rows="6" 
+                        required
+                        class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >{{ post.description if post else '' }}</textarea>
+                </div>
+
+                <!-- Existing Media (for editing) -->
+                {% if post and post.media %}
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Current Media 
+                        <span class="text-xs text-gray-500 font-normal">(Drag to reorder, click X to remove)</span>
+                    </label>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4" id="existing-media">
+                        {% for media in post.media %}
+                        <div class="relative group cursor-move" data-media-url="{{ media.url }}" data-media-type="{{ media.type }}">
+                            {% if media.type == 'image' %}
+                            <img src="{{ media.url }}" alt="Media" class="w-full h-32 object-cover rounded-lg border-2 border-gray-200 pointer-events-none">
+                            {% elif media.type == 'video' %}
+                            <video src="{{ media.url }}" class="w-full h-32 object-cover rounded-lg border-2 border-gray-200 pointer-events-none"></video>
+                            {% endif %}
+                            <!-- Drag handle -->
+                            <div class="absolute top-1 left-1 bg-gray-800 bg-opacity-70 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10 3a1 1 0 01.707.293l3 3a1 1 0 01-1.414 1.414L10 5.414 7.707 7.707a1 1 0 01-1.414-1.414l3-3A1 1 0 0110 3zm-3.707 9.293a1 1 0 011.414 0L10 14.586l2.293-2.293a1 1 0 011.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" />
+                                </svg>
+                            </div>
+                            <button 
+                                type="button" 
+                                onclick="removeExistingMedia('{{ media.url }}')"
+                                class="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                            >
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Upload New Media -->
+                <div class="mb-6 p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        {% if post %}Add More Media{% else %}Upload Media *{% endif %}
+                    </label>
+                    <p class="text-xs text-gray-500 mb-3">Upload images and videos for this post. Files will be automatically optimized.</p>
+                    
+                    <input 
+                        type="file" 
+                        id="media-files" 
+                        name="files" 
+                        accept="video/*,image/*" 
+                        multiple 
+                        {% if not post %}required{% endif %}
+                        onchange="previewNewFiles()"
+                        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-white focus:outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                    />
+                    
+                    <div class="mt-2 flex gap-2 items-center">
+                        <label class="text-xs text-gray-600">Quality:</label>
+                        <select name="quality" class="text-xs border-gray-300 rounded-md">
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+
+                    <!-- Preview new files -->
+                    <div id="new-files-preview" class="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 hidden"></div>
+                </div>
+
+                <!-- Hidden field for date folder -->
+                <input type="hidden" name="date_folder" id="date_folder_input">
+
+                <!-- Buttons -->
+                <div class="flex gap-3">
+                    <button 
+                        type="submit" 
+                        class="flex-1 inline-flex justify-center items-center px-4 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                        {% if post %}Update Post{% else %}Create Post{% endif %}
+                    </button>
+                    <a 
+                        href="/admin" 
+                        class="flex-1 inline-flex justify-center items-center px-4 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Sync date with date_folder
+function updateDateFolder() {
+    const dateInput = document.getElementById('date');
+    const dateFolderInput = document.getElementById('date_folder_input');
+    
+    if (dateInput && dateFolderInput) {
+        const dateValue = dateInput.value.trim();
+        const folderDate = dateValue.replace(/\//g, '-');
+        dateFolderInput.value = folderDate;
+    }
+}
+
+// Remove existing media
+function removeExistingMedia(url) {
+    const container = document.querySelector(`[data-media-url="${url}"]`);
+    if (container && confirm('Remove this media from the post?')) {
+        container.remove();
+        updateMediaOrder(); // Update order after removal
+    }
+}
+
+// Update hidden inputs with current media order
+function updateMediaOrder() {
+    const existingMediaContainer = document.getElementById('existing-media');
+    if (!existingMediaContainer) return;
+    
+    // Remove old hidden inputs
+    document.querySelectorAll('input[name="existing_media_urls"]').forEach(input => input.remove());
+    document.querySelectorAll('input[name="existing_media_types"]').forEach(input => input.remove());
+    
+    // Add new hidden inputs in current order
+    const mediaItems = existingMediaContainer.querySelectorAll('[data-media-url]');
+    const form = document.getElementById('post-form');
+    
+    mediaItems.forEach((item, index) => {
+        const url = item.dataset.mediaUrl;
+        const type = item.dataset.mediaType;
+        
+        const urlInput = document.createElement('input');
+        urlInput.type = 'hidden';
+        urlInput.name = 'existing_media_urls';
+        urlInput.value = url;
+        form.appendChild(urlInput);
+        
+        const typeInput = document.createElement('input');
+        typeInput.type = 'hidden';
+        typeInput.name = 'existing_media_types';
+        typeInput.value = type;
+        form.appendChild(typeInput);
+    });
+}
+
+// Preview newly selected files
+function previewNewFiles() {
+    const fileInput = document.getElementById('media-files');
+    const preview = document.getElementById('new-files-preview');
+    
+    preview.innerHTML = '';
+    
+    if (fileInput.files.length > 0) {
+        preview.classList.remove('hidden');
+        
+        Array.from(fileInput.files).forEach((file, index) => {
+            const reader = new FileReader();
+            const div = document.createElement('div');
+            div.className = 'relative';
+            
+            reader.onload = function(e) {
+                if (file.type.startsWith('image/')) {
+                    div.innerHTML = `<img src="${e.target.result}" class="w-full h-32 object-cover rounded-lg border-2 border-indigo-200">`;
+                } else if (file.type.startsWith('video/')) {
+                    div.innerHTML = `<video src="${e.target.result}" class="w-full h-32 object-cover rounded-lg border-2 border-indigo-200"></video>`;
+                }
+                div.innerHTML += `<div class="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">${file.name}</div>`;
+            };
+            
+            reader.readAsDataURL(file);
+            preview.appendChild(div);
+        });
+    } else {
+        preview.classList.add('hidden');
+    }
+}
+
+// Initialize Sortable.js for drag & drop
+let sortable = null;
+function initializeSortable() {
+    const existingMediaContainer = document.getElementById('existing-media');
+    if (existingMediaContainer && existingMediaContainer.children.length > 0) {
+        sortable = Sortable.create(existingMediaContainer, {
+            animation: 150,
+            ghostClass: 'opacity-50',
+            onEnd: function (evt) {
+                updateMediaOrder();
+            }
+        });
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    updateDateFolder();
+    
+    const dateInput = document.getElementById('date');
+    if (dateInput) {
+        dateInput.addEventListener('input', updateDateFolder);
+        dateInput.addEventListener('change', updateDateFolder);
+    }
+    
+    // Initialize sortable and media order
+    initializeSortable();
+    updateMediaOrder();
+    
+    // Update order before form submission
+    document.getElementById('post-form').addEventListener('submit', function(e) {
+        updateMediaOrder();
+    });
+});
+</script>
+{% endblock %} 
