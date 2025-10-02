@@ -1,16 +1,19 @@
 from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from typing import List, Dict, Any
 from pydantic import BaseModel
-import os
 from datetime import datetime
 
 app = FastAPI(title="My Simple Blog", description="A personal blog built with FastAPI")
 
-# Mount static files for media content
-app.mount("/static", StaticFiles(directory="files"), name="static")
+# Configure Google Cloud Storage
+GCS_BUCKET_NAME = "blog-posts-gazerah" # <<< REPLACE WITH YOUR GCS BUCKET NAME
+# storage_client = storage.Client()
+# bucket = storage_client.bucket(GCS_BUCKET_NAME)
+
+# Remove StaticFiles mount as we'll be serving from GCS
+# app.mount("/static", StaticFiles(directory="files"), name="static")
 
 # Setup Jinja2 templates
 templates = Jinja2Templates(directory="templates")
@@ -19,6 +22,14 @@ templates = Jinja2Templates(directory="templates")
 class MediaItem(BaseModel):
     type: str  # 'image' or 'video'
     url: str
+
+def get_gcs_url(filepath: str) -> str:
+    """Generates a public URL for a GCS object."""
+    # GCS objects are typically accessed via https://storage.googleapis.com/<bucket-name>/<object-name>
+    # The filepath comes in as '/static/24-06-2025/mamae-ceu.webp'
+    # We need the object name to be 'posts/24-06-2025/mamae-ceu.webp'
+    object_name = filepath.replace("/static/", "posts/")
+    return f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/{object_name}"
 
 class BlogPost(BaseModel):
     id: int
@@ -33,13 +44,13 @@ BLOG_POSTS = [
         id=1,
         title="Visita da mamãe no litoral",
         date="24/06/2025",
-        description='Minha mãe veio passar o final de semana na minha casa, e nesse dia fizemos uns lanches naturais, fomos na praia, porque ela queria entrar no mar, e mais tarde encontramos a Agatha e fomos no cinema assistir "Divertidamente 2".\n\nFico lisongeado de olhar pra minha mãe e namorada vivendo coisas gostosas e frutíferas comigo, duas pessoas lindas de corpo e alma.\n\nSão momentos como esse que fazem a vida valer a pena.',
+        description='Minha mãe veio passar o final de semana na minha casa, e nesse dia fizemos uns lanches naturais, fomos na praia, porque ela queria entrar no mar, e mais tarde encontramos a Agatha e fomos no cinema assistir "Divertidamente 2".\n\nFico lisonjeado de olhar pra minha mãe e namorada vivendo coisas gostosas e frutíferas comigo, duas pessoas lindas de corpo e alma.\n\nSão momentos como esse que fazem a vida valer a pena.',
         media=[
-            MediaItem(type='image', url='/static/24-06-2025/mamae-ceu.webp'),
-            MediaItem(type='image', url='/static/24-06-2025/os-tres.webp'),
-            MediaItem(type='image', url='/static/24-06-2025/mamae-comidinha.webp'),
-            MediaItem(type='image', url='/static/24-06-2025/mamae-descontraida.webp'),
-            MediaItem(type='image', url='/static/24-06-2025/cinema.webp'),
+            MediaItem(type='image', url=get_gcs_url('/static/24-06-2025/mamae-ceu.webp')),
+            MediaItem(type='image', url=get_gcs_url('/static/24-06-2025/os-tres.webp')),
+            MediaItem(type='image', url=get_gcs_url('/static/24-06-2025/mamae-comidinha.webp')),
+            MediaItem(type='image', url=get_gcs_url('/static/24-06-2025/mamae-descontraida.webp')),
+            MediaItem(type='image', url=get_gcs_url('/static/24-06-2025/cinema.webp')),
         ]
     )
 ]
