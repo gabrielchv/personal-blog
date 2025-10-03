@@ -71,11 +71,27 @@ if ! command -v ffmpeg &> /dev/null; then
     print_warning "  - macOS: brew install ffmpeg"
 fi
 
+# Check if .env file exists
+if [ ! -f ".env" ]; then
+    print_error ".env file not found! Please create one with:"
+    echo "ADMIN_PASSWORD=your_password"
+    echo "SECRET_KEY=your_secret_key"
+    echo "GCS_BUCKET_NAME=blog-posts-gazerah"
+    echo "GCS_SERVICE_ACCOUNT_KEY_PATH=../credentials.json"
+    exit 1
+fi
+
+# Check if credentials.json exists
+if [ ! -f "credentials.json" ]; then
+    print_warning "credentials.json not found in project root"
+fi
+
 # Change to blog-site directory
 print_status "Starting blog-site server..."
 cd blog-site
 
 # Run the blog-site
 print_success "Starting FastAPI server on http://localhost:8000"
+print_status "Admin panel: http://localhost:8000/admin"
 print_status "Press Ctrl+C to stop the server"
-python main.py
+uvicorn main:app --reload --host 0.0.0.0 --port 8000

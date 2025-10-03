@@ -19,21 +19,29 @@ from starlette.middleware.sessions import SessionMiddleware
 # Load environment variables
 load_dotenv()
 
-app = FastAPI(title="My Simple Blog", description="A personal blog built with FastAPI")
-
-# Add session middleware for authentication
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "fallback-secret-key"))
-
-# Admin password from .env
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
-
 # --- GCS Configuration ---
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "blog-posts-gazerah")
-# IMPORTANT: Replace with the actual path to your service account key file.
-# This file grants permissions to write to GCS. Keep it secure!
-GCS_SERVICE_ACCOUNT_KEY_PATH = os.getenv("GCS_SERVICE_ACCOUNT_KEY_PATH", "../credentials.json") 
+GCS_SERVICE_ACCOUNT_KEY_PATH = os.getenv("GCS_SERVICE_ACCOUNT_KEY_PATH", "../credentials.json")
 
-storage_client = storage.Client.from_service_account_json(GCS_SERVICE_ACCOUNT_KEY_PATH)
+# Initialize Google Cloud Storage client
+# In Cloud Run, use default credentials (no keyfile needed)
+# In local dev, use credentials.json file
+# Try to resolve the path relative to the script location
+script_dir = Path(__file__).parent
+credentials_path = (script_dir / GCS_SERVICE_ACCOUNT_KEY_PATH).resolve()
+
+if credentials_path.exists():
+    print(f"📝 Using service account from: {credentials_path}")
+    storage_client = storage.Client.from_service_account_json(str(credentials_path))
+else:
+    print("☁️  Using Cloud Run default credentials")
+    try:
+        storage_client = storage.Client()
+    except Exception as e:
+        print(f"❌ Failed to initialize GCS client: {e}")
+        print(f"💡 Make sure credentials.json exists at: {credentials_path}")
+        raise
+    
 bucket = storage_client.bucket(GCS_BUCKET_NAME)
 
 # Remove StaticFiles mount as we'll be serving from GCS
@@ -43,7 +51,8 @@ bucket = storage_client.bucket(GCS_BUCKET_NAME)
 templates = Jinja2Templates(directory="templates")
 
 # --- Blog Post Storage ---
-POSTS_FILE = Path("blog_posts.json")
+# Store blog_posts.json in GCS for persistence across Cloud Run instances
+GCS_POSTS_FILE = "blog_posts.json"
 
 # Data models
 class MediaItem(BaseModel):
@@ -58,16 +67,64 @@ class BlogPost(BaseModel):
     media: List[MediaItem]
 
 def load_posts() -> List[BlogPost]:
-    if POSTS_FILE.exists():
-        with open(POSTS_FILE, "r") as f:
-            # Convert raw dicts to BlogPost objects
-            return [BlogPost(**post) for post in json.load(f)]
-    return []
+    """Load blog posts from GCS. Returns empty list if file doesn't exist."""
+    try:
+        blob = bucket.blob(GCS_POSTS_FILE)
+        if blob.exists():
+            json_data = blob.download_as_text()
+            data = json.loads(json_data)
+            print(f"📚 Loaded {len(data)} posts from GCS (gs://{GCS_BUCKET_NAME}/{GCS_POSTS_FILE})")
+            return [BlogPost(**post) for post in data]
+        else:
+            print(f"📝 No posts file found in GCS, starting fresh")
+            return []
+    except Exception as e:
+        print(f"⚠️  Error loading posts from GCS: {e}")
+        return []
 
 def save_posts(posts: List[BlogPost]):
-    with open(POSTS_FILE, "w") as f:
-        # Convert BlogPost objects to dictionaries for JSON serialization
-        json.dump([post.model_dump() for post in posts], f, indent=4)
+    """Save blog posts to GCS."""
+    try:
+        blob = bucket.blob(GCS_POSTS_FILE)
+        json_data = json.dumps([post.model_dump() for post in posts], indent=4)
+        blob.upload_from_string(json_data, content_type='application/json')
+        print(f"💾 Saved {len(posts)} posts to GCS (gs://{GCS_BUCKET_NAME}/{GCS_POSTS_FILE})")
+    except Exception as e:
+        print(f"❌ Error saving posts to GCS: {e}")
+        raise
+
+# --- FastAPI App Initialization ---
+app = FastAPI(title="My Simple Blog", description="A personal blog built with FastAPI")
+
+# Add session middleware for authentication
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "fallback-secret-key"))
+
+# Admin password from .env
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
+
+@app.on_event("startup")
+async def startup_event():
+    """Run startup checks and print configuration."""
+    print("\n" + "="*60)
+    print("🚀 Personal Blog Starting Up...")
+    print("="*60)
+    print(f"📦 GCS Bucket: {GCS_BUCKET_NAME}")
+    print(f"📁 Posts File: {GCS_POSTS_FILE}")
+    print(f"🔐 Admin Password Set: {'Yes' if ADMIN_PASSWORD != 'admin' else 'No (using default!)'}")
+    
+    # Test GCS connection
+    try:
+        bucket.reload()
+        print(f"✅ GCS connection successful!")
+    except Exception as e:
+        print(f"⚠️  GCS connection issue: {e}")
+    
+    # Load posts
+    posts = load_posts()
+    print(f"📚 Loaded {len(posts)} existing posts")
+    print("="*60 + "\n")
+
+# --- Helper Functions ---
 
 def get_gcs_url(object_name: str) -> str:
     """Generates a public URL for a GCS object."""

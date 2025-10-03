@@ -6,4 +6,4 @@ pydantic==2.5.0
 google-cloud-storage
 python-dotenv
 starlette
-itsdangerous
+itsdangerous 
